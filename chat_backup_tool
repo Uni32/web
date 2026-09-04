@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>채팅 백업</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+            background: #f5f5f7;
+            color: #1c1c1e;
+        }
+
+        /* 상단 UI */
+        .toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+
+            padding: 16px;
+            background: #ffffff;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .toolbar h1 {
+            margin: 0 0 12px;
+            font-size: 20px;
+        }
+
+        .toolbar-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        button,
+        input[type="file"] {
+            font: inherit;
+        }
+
+        button {
+            border: 0;
+            border-radius: 8px;
+            padding: 9px 14px;
+            cursor: pointer;
+
+            background: #1c1c1e;
+            color: #ffffff;
+        }
+
+        button:hover {
+            opacity: 0.85;
+        }
+
+        /* 채팅 영역 */
+        #chat {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 24px 16px 60px;
+        }
+
+        /* 메시지 */
+        .chat-block {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: 14px 0;
+        }
+
+        .chat-avatar {
+            flex: 0 0 40px;
+
+            width: 40px;
+            height: 40px;
+
+            border-radius: 50%;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            overflow: hidden;
+
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 17px;
+        }
+
+        .chat-avatar img {
+            width: 100%;
+            height: 100%;
+
+            object-fit: cover;
+            display: block;
+        }
+
+        .chat-body {
+            min-width: 0;
+            max-width: calc(100% - 50px);
+        }
+
+        .chat-meta {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+
+            margin: 0 0 4px 2px;
+        }
+
+        .chat-name {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .chat-time {
+            color: #8e8e93;
+            font-size: 12px;
+        }
+
+        .chat-msg-row {
+            display: flex;
+        }
+
+        .chat-msg {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+
+            background: #ffffff;
+            border: 1px solid #e5e5e7;
+
+            border-radius: 4px 16px 16px 16px;
+
+            padding: 10px 13px;
+
+            line-height: 1.5;
+            font-size: 15px;
+
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+
+        /* 구분선 */
+        .chat-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+
+            margin: 28px 0;
+        }
+
+        .chat-divider::before,
+        .chat-divider::after {
+            content: "";
+
+            height: 1px;
+
+            background: #d1d1d6;
+
+            flex: 1;
+        }
+
+        .chat-divider-badge {
+            flex: 0 0 auto;
+
+            padding: 5px 12px;
+
+            border-radius: 999px;
+
+            background: #e5e5ea;
+            color: #636366;
+
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* 빈 화면 */
+        .empty {
+            text-align: center;
+            color: #8e8e93;
+            padding: 60px 20px;
+        }
+
+        /* 모바일 */
+        @media (max-width: 600px) {
+            #chat {
+                padding: 18px 10px 40px;
+            }
+
+            .chat-body {
+                max-width: calc(100% - 50px);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 상단 UI -->
+    <div class="toolbar">
+        <h1>채팅 백업</h1>
+
+        <div class="toolbar-actions">
+            <input
+                id="fileInput"
+                type="file"
+                accept=".txt,text/plain"
+            >
+
+            <button id="downloadButton">
+                JSON 다운로드
+            </button>
+
+            <button id="saveHtmlButton">
+                HTML 다운로드
+            </button>
+        </div>
+    </div>
+
+
+    <!-- 실제 채팅 영역 -->
+    <div id="chat">
+        <div class="empty">
+            TXT 파일을 선택하세요.
+        </div>
+    </div>
+
+
+    <!-- 사용자 설정 -->
+    <script src="./userConfig.js"></script>
+
+
+    <script>
+
+        const fileInput = document.getElementById("fileInput");
+        const chat = document.getElementById("chat");
+
+        const downloadButton =
+            document.getElementById("downloadButton");
+
+        const saveHtmlButton =
+            document.getElementById("saveHtmlButton");
+
+
+        let parsedMessages = [];
+
+
+        /*
+         * 사용자 설정 가져오기
+         */
+        function getUserConfig(nickname) {
+
+            if (
+                typeof userConfig !== "undefined" &&
+                userConfig &&
+                userConfig[nickname]
+            ) {
+
+                return {
+                    avatar:
+                        userConfig[nickname].avatar ||
+                        nickname.charAt(0) ||
+                        "?",
+
+                    color:
+                        userConfig[nickname].color ||
+                        "#1c1c1e",
+
+                    image:
+                        userConfig[nickname].image ||
+                        ""
+                };
+            }
+
+
+            /*
+             * 설정되지 않은 닉네임은
+             * 자동으로 첫 글자를 아바타로 사용
+             */
+            return {
+                avatar: nickname.charAt(0) || "?",
+                color: "#1c1c1e",
+                image: ""
+            };
+        }
+
+
+
+        /*
+         * TXT 파싱
+         *
+         * 예:
+         *
+         * [닉네임] [오전 1:39] 내용
+         * 다음 줄
+         * 다음 줄
+         *
+         * [닉네임2] [오후 2:30] 내용
+         *
+         * /~test~/
+         */
+        function parseChat(text) {
+
+            const lines =
+                text
+                    .replace(/^\uFEFF/, "")
+                    .split(/\r?\n/);
+
+
+            const messagePattern =
+                /^\[([^\]]+)\]\s+\[(오전|오후)\s+(\d{1,2}:\d{2})\]\s?(.*)$/;
+
+
+            const separatorPattern =
+                /^\/~\s*(.*?)\s*~\/$/;
+
+
+            const result = [];
+
+            let current = null;
+
+
+            for (const line of lines) {
+
+
+                /*
+                 * 구분선
+                 *
+                 * /~test~/
+                 */
+                const separatorMatch =
+                    line.match(separatorPattern);
+
+
+                if (separatorMatch) {
+
+                    /*
+                     * 기존 메시지 저장
+                     */
+                    if (current) {
+
+                        current.content =
+                            current.content
+                                .join("\n")
+                                .trimEnd();
+
+                        result.push(current);
+
+                        current = null;
+                    }
+
+
+                    /*
+                     * 구분선은 메시지가 아닌 별도 객체
+                     */
+                    result.push({
+                        type: "separator",
+                        content: separatorMatch[1]
+                    });
+
+                    continue;
+                }
+
+
+
+                /*
+                 * 메시지 헤더
+                 */
+                const messageMatch =
+                    line.match(messagePattern);
+
+
+                if (messageMatch) {
+
+                    /*
+                     * 이전 메시지 저장
+                     */
+                    if (current) {
+
+                        current.content =
+                            current.content
+                                .join("\n")
+                                .trimEnd();
+
+                        result.push(current);
+                    }
+
+
+                    /*
+                     * 새로운 메시지 시작
+                     */
+                    current = {
+
+                        type: "message",
+
+                        nickname:
+                            messageMatch[1],
+
+                        time:
+                            `${messageMatch[2]} ${messageMatch[3]}`,
+
+                        content:
+                            [messageMatch[4]]
+                    };
+
+
+                    continue;
+                }
+
+
+
+                /*
+                 * 메시지의 추가 줄
+                 */
+                if (current) {
+
+                    current.content.push(line);
+                }
+            }
+
+
+
+            /*
+             * 마지막 메시지 저장
+             */
+            if (current) {
+
+                current.content =
+                    current.content
+                        .join("\n")
+                        .trimEnd();
+
+                result.push(current);
+            }
+
+
+            return result;
+        }
+
+
+
+        /*
+         * 채팅 렌더링
+         */
+        function renderChat(messages) {
+
+            chat.innerHTML = "";
+
+
+            if (!messages.length) {
+
+                const empty =
+                    document.createElement("div");
+
+                empty.className = "empty";
+
+                empty.textContent =
+                    "표시할 채팅이 없습니다.";
+
+                chat.appendChild(empty);
+
+                return;
+            }
+
+
+
+            for (const item of messages) {
+
+
+                /*
+                 * 구분선
+                 */
+                if (item.type === "separator") {
+
+                    const divider =
+                        document.createElement("div");
+
+                    divider.className =
+                        "chat-divider";
+
+
+                    const badge =
+                        document.createElement("span");
+
+                    badge.className =
+                        "chat-divider-badge";
+
+                    badge.textContent =
+                        item.content;
+
+
+                    divider.appendChild(badge);
+
+                    chat.appendChild(divider);
+
+                    continue;
+                }
+
+
+
+                /*
+                 * 사용자 설정
+                 */
+                const config =
+                    getUserConfig(item.nickname);
+
+
+
+                /*
+                 * chat-block
+                 */
+                const block =
+                    document.createElement("div");
+
+                block.className =
+                    "chat-block";
+
+
+
+                /*
+                 * 아바타
+                 */
+                const avatar =
+                    document.createElement("div");
+
+                avatar.className =
+                    "chat-avatar";
+
+                avatar.style.background =
+                    config.color;
+
+
+
+                /*
+                 * 이미지 아바타
+                 */
+                if (config.image) {
+
+                    const img =
+                        document.createElement("img");
+
+                    img.src =
+                        config.image;
+
+                    img.alt = "";
+
+
+                    /*
+                     * 이미지 로딩 실패 시
+                     * 설정된 글자로 대체
+                     */
+                    img.onerror = function () {
+
+                        this.remove();
+
+                        avatar.textContent =
+                            config.avatar;
+                    };
+
+
+                    avatar.appendChild(img);
+
+                }
+
+                /*
+                 * 문자 아바타
+                 */
+                else {
+
+                    avatar.textContent =
+                        config.avatar;
+                }
+
+
+
+                /*
+                 * chat-body
+                 */
+                const body =
+                    document.createElement("div");
+
+                body.className =
+                    "chat-body";
+
+
+
+                /*
+                 * chat-meta
+                 */
+                const meta =
+                    document.createElement("div");
+
+                meta.className =
+                    "chat-meta";
+
+
+
+                /*
+                 * 이름
+                 */
+                const name =
+                    document.createElement("span");
+
+                name.className =
+                    "chat-name";
+
+                name.textContent =
+                    item.nickname;
+
+
+
+                /*
+                 * 시간
+                 */
+                const time =
+                    document.createElement("span");
+
+                time.className =
+                    "chat-time";
+
+                time.textContent =
+                    item.time;
+
+
+
+                meta.appendChild(name);
+                meta.appendChild(time);
+
+
+
+                /*
+                 * chat-msg-row
+                 */
+                const row =
+                    document.createElement("div");
+
+                row.className =
+                    "chat-msg-row";
+
+
+
+                /*
+                 * 메시지
+                 */
+                const msg =
+                    document.createElement("div");
+
+                msg.className =
+                    "chat-msg";
+
+                msg.textContent =
+                    item.content;
+
+
+
+                row.appendChild(msg);
+
+                body.appendChild(meta);
+                body.appendChild(row);
+
+
+                block.appendChild(avatar);
+                block.appendChild(body);
+
+
+                chat.appendChild(block);
+            }
+        }
+
+
+
+        /*
+         * TXT 파일 선택
+         */
+        fileInput.addEventListener(
+            "change",
+            async function () {
+
+                const file =
+                    this.files[0];
+
+                if (!file) {
+                    return;
+                }
+
+
+                const text =
+                    await file.text();
+
+
+                parsedMessages =
+                    parseChat(text);
+
+
+                renderChat(parsedMessages);
+            }
+        );
+
+
+
+        /*
+         * JSON 다운로드
+         */
+        downloadButton.addEventListener(
+            "click",
+            function () {
+
+                const json =
+                    JSON.stringify(
+                        parsedMessages,
+                        null,
+                        2
+                    );
+
+
+                const blob =
+                    new Blob(
+                        [json],
+                        {
+                            type:
+                                "application/json;charset=utf-8"
+                        }
+                    );
+
+
+                const url =
+                    URL.createObjectURL(blob);
+
+
+                const a =
+                    document.createElement("a");
+
+
+                a.href = url;
+
+                a.download =
+                    "chat_backup.json";
+
+
+                document.body.appendChild(a);
+
+                a.click();
+
+                document.body.removeChild(a);
+
+
+                URL.revokeObjectURL(url);
+            }
+        );
+
+
+
+        /*
+         * HTML 다운로드
+         *
+         * 현재 #chat 안에 있는 내용만 저장한다.
+         *
+         * 따라서
+         * - 채팅 백업 제목
+         * - 파일 선택
+         * - JSON 버튼
+         * - HTML 버튼
+         *
+         * 은 저장되지 않는다.
+         */
+        saveHtmlButton.addEventListener(
+            "click",
+            function () {
+
+                const chatHtml =
+                    chat.innerHTML;
+
+
+                const standaloneHtml = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>채팅 백업</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+    background: #f5f5f7;
+    color: #1c1c1e;
+}
+
+#chat {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+}
+
+.chat-block {
+    display: flex;
+    align-items: flex-start;
+
+    gap: 10px;
+
+    margin: 14px 0;
+}
+
+.chat-avatar {
+    flex: 0 0 40px;
+
+    width: 40px;
+    height: 40px;
+
+    border-radius: 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    overflow: hidden;
+
+    color: #ffffff;
+
+    font-weight: 700;
+    font-size: 17px;
+}
+
+.chat-avatar img {
+    width: 100%;
+    height: 100%;
+
+    object-fit: cover;
+
+    display: block;
+}
+
+.chat-body {
+    min-width: 0;
+
+    max-width:
+        calc(100% - 50px);
+}
+
+.chat-meta {
+    display: flex;
+    align-items: baseline;
+
+    gap: 8px;
+
+    margin:
+        0 0 4px 2px;
+}
+
+.chat-name {
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.chat-time {
+    color: #8e8e93;
+    font-size: 12px;
+}
+
+.chat-msg-row {
+    display: flex;
+}
+
+.chat-msg {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+
+    background: #ffffff;
+
+    border:
+        1px solid #e5e5e7;
+
+    border-radius:
+        4px 16px 16px 16px;
+
+    padding:
+        10px 13px;
+
+    line-height: 1.5;
+
+    font-size: 15px;
+
+    box-shadow:
+        0 1px 2px
+        rgba(0,0,0,.04);
+}
+
+.chat-divider {
+    display: flex;
+    align-items: center;
+
+    gap: 12px;
+
+    margin: 28px 0;
+}
+
+.chat-divider::before,
+.chat-divider::after {
+    content: "";
+
+    height: 1px;
+
+    background: #d1d1d6;
+
+    flex: 1;
+}
+
+.chat-divider-badge {
+    flex: 0 0 auto;
+
+    padding:
+        5px 12px;
+
+    border-radius: 999px;
+
+    background: #e5e5ea;
+
+    color: #636366;
+
+    font-size: 12px;
+
+    font-weight: 600;
+}
+
+@media (max-width: 600px) {
+
+    #chat {
+        padding:
+            18px 10px 40px;
+    }
+
+    .chat-body {
+        max-width:
+            calc(100% - 50px);
+    }
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="chat">
+${chatHtml}
+</div>
+
+</body>
+</html>`;
+
+
+                const blob =
+                    new Blob(
+                        [standaloneHtml],
+                        {
+                            type:
+                                "text/html;charset=utf-8"
+                        }
+                    );
+
+
+                const url =
+                    URL.createObjectURL(blob);
+
+
+                const a =
+                    document.createElement("a");
+
+
+                a.href = url;
+
+                a.download =
+                    "chat_backup.html";
+
+
+                document.body.appendChild(a);
+
+                a.click();
+
+                document.body.removeChild(a);
+
+
+                URL.revokeObjectURL(url);
+            }
+        );
+
+    </script>
+
+</body>
+</html>
